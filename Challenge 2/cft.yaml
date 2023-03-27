@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploy a Lambda custom resource for Cloudformation to perform Crud operations for clientX"
+
+Parameters:
+  ParamS3Bucket:
+    Description: The S3 Bucket that holds the lambda code
+    Type: String
+
+  ParamS3Key:
+    Description: The S3 key for the lambda code zip file
+    Type: String
+
+  HashKeyElementName:
+    Type: String
+    Default: userID
+    Description: Unique User Id
+
+  HashKeyElementType:
+    Type: String
+    Default: S
+    Description: User Id Type
+
+  DynamoDBKMSKey:
+    Type: String
+    Default: 8d22384a-cb8d-4d91-b5c9-a15088ecb58f
+    Description: KMS Key Id used to encrypt the dynamodb
+
+Resources:
+  UserTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Users
+      AttributeDefinitions:
+        - 
+          AttributeName: !Ref HashKeyElementName
+          AttributeType: !Ref HashKeyElementType
+      KeySchema:
+        - 
+          AttributeName: !Ref HashKeyElementName
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      SSESpecification:
+        KMSMasterKeyId: !Ref DynamoDBKMSKey
+        SSEEnabled: true
+        SSEType: KMS  
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: DynamoDBPermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:BatchGetItem'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:BatchWriteItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:UpdateItem'
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:*"
+        - PolicyName: AllowLambdaToWriteLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*"
+              - Sid: AllowLambdaToCreateLogGroups
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+        - PolicyName: KMSPolicyClientXCrud
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:GetKeyPolicy
+                  - kms:PutKeyPolicy
+                # WARNING
+                # Lock this Resource down when deploying in a real environment
+                Resource: '*'
+      RoleName: !Sub "CLientX-CRUD-Role-${AWS::StackName}"
+      Path:
+        Fn::Sub: /
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref ParamS3Bucket
+        S3Key: !Ref ParamS3Key
+      Description: 'Custom CloudFormation resource used for CRUD operations'
+      FunctionName: !Sub "ClientX-CRUD-${AWS::StackName}"
+      Handler: 'lambda_function.lambda_handler'
+      MemorySize: 128
+      Role:
+        Fn::GetAtt: LambdaRole.Arn
+      Runtime: python3.8
+      Timeout: 60
+
+Outputs:
+  LambdaFunctionARN:
+    Description: The ARN of the lambda function
+    Value:
+      !GetAtt LambdaFunction.Arn
+    Export:
+      Name: 'ClientXCRUD'
