@@ -1,0 +1,213 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploy a Lambda and AWS Config custom resource for Cloudformation to perform auto remediation operations for ACME Corp"
+
+Parameters:
+  ParamS3Bucket:
+    Description: The S3 Bucket that holds the lambda code
+    Type: String
+
+  ParamS3Key:
+    Description: The S3 key for the lambda code zip file
+    Type: String
+  
+  lambdaFunctionName:
+    Type: String
+    Default: IGWCheck
+
+Resources:
+  ConfigRuleForIGW:
+    DependsOn: [ConfigPermissionToCallLambda, ConfigRecorder]
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ConfigRuleForIGWCheck
+      Scope:
+        ComplianceResourceTypes:
+          - "AWS::EC2::InternetGateway"
+      Source:
+        Owner: "CUSTOM_LAMBDA"
+        SourceDetails: 
+          - 
+            EventSource: "aws.config"
+            MaximumExecutionFrequency: One_Hour
+            MessageType: "ScheduledNotification"
+        SourceIdentifier: 
+          Fn::GetAtt: 
+            - IGWComplianceCheck
+            - Arn
+        
+  ConfigPermissionToCallLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IGWComplianceCheck.Arn
+      Action: lambda:InvokeFunction
+      Principal: config.amazonaws.com
+      
+  IGWComplianceCheck:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref ParamS3Bucket
+        S3Key: !Ref ParamS3Key
+      Description: 'Custom CloudFormation resource used for custom config rule'
+      FunctionName: !Ref lambdaFunctionName
+      Handler: Event_Handler.lambda_handler
+      Runtime: python3.8
+      Timeout: '60'
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [lambda.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: ['logs:*', 'config:PutEvaluations', 'ec2:DescribeVolumeAttribute']
+            Resource: '*'
+      RoleName: !Sub "ACME-Role-${AWS::StackName}"
+
+  lambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${lambdaFunctionName}
+      RetentionInDays: 90
+
+  IGWRemediationConfiguration:
+    DependsOn: USGConfigRule
+    Type: "AWS::Config::RemediationConfiguration"
+    Properties:
+        ConfigRuleName: "ConfigRuleForIGWCheck"
+        Parameters:
+            AutomationAssumeRole: 
+              StaticValue:
+                  Values: 
+                  - !Ref RemedaitionRole
+            InternetGatewayId:
+                StaticValue:
+                    Values:
+                        - "*"
+        TargetId: "AWSConfigRemediation-DetachAndDeleteInternetGateway"
+        TargetType: "SSM_DOCUMENT"
+        TargetVersion: "1"
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ConfigRecorder: 
+    Type: AWS::Config::ConfigurationRecorder
+    Properties: 
+      Name: acme-rec
+      RecordingGroup: 
+        ResourceTypes: 
+          - "AWS::EC2::NetworkInterface"
+      RoleARN: !GetAtt ConfigRole.Arn
+
+  DeliveryChannel:
+    DependsOn: ConfigBucket
+    Type: AWS::Config::DeliveryChannel
+    Properties:
+      ConfigSnapshotDeliveryProperties:
+        DeliveryFrequency: One_Hour
+      S3BucketName: !Ref 'ConfigBucket'
+
+  USGConfigRule:
+    DependsOn: ConfigRecorder
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      ConfigRuleName: "ec2-security-group-attached-to-eni-periodic"
+      Scope:
+        ComplianceResourceTypes:
+          - "AWS::EC2::SecurityGroup"
+      Description: "A Config rule that checks that security groups are attached to Amazon Elastic Compute Cloud (Amazon EC2) instances or an elastic network interfaces (ENIs). The rule returns NON_COMPLIANT if the security group is not associated with an Amazon EC2 instan..."
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "EC2_SECURITY_GROUP_ATTACHED_TO_ENI_PERIODIC"
+      MaximumExecutionFrequency: One_Hour
+
+  USGRemediationConfiguration:
+    DependsOn: USGConfigRule
+    Type: "AWS::Config::RemediationConfiguration"
+    Properties:
+        ConfigRuleName: "ec2-security-group-attached-to-eni-periodic"
+        Parameters:
+            AutomationAssumeRole: 
+              StaticValue:
+                  Values: 
+                  - !Ref RemedaitionRole
+            GroupId:
+                StaticValue:
+                    Values:
+                        - "*"
+        TargetId: "AWSConfigRemediation-DeleteUnusedSecurityGroup"
+        TargetType: "SSM_DOCUMENT"
+        TargetVersion: "1"
+  
+  ConfigBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: config-acme-bucket
+
+  ConfigRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: config.amazonaws.com
+          Action: 'sts:AssumeRole'
+      Policies:
+      - PolicyName: config-role-acme
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: s3:GetBucketAcl
+            Resource: !Join ['', ['arn:aws:s3:::', !Ref 'ConfigBucket']]
+          - Effect: Allow
+            Action: s3:PutObject
+            Resource: !Join ['', ['arn:aws:s3:::', !Ref 'ConfigBucket', /AWSLogs/,
+                !Ref 'AWS::AccountId', /*]]
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+          - Effect: Allow
+            Action: config:Put*
+            Resource: '*'
+
+  RemedaitionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - ssm.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: AllowConfigRemediation
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ssm:ExecuteAutomation'
+                  - 'ssm:GetAutomationExecution'
+                  - 'ec2:DescribeSecurityGroups'
+                  - 'ec2:DeleteSecurityGroup'
+                  - 'ssm:StartAutomationExecution'
+                  - 'ec2:DeleteInternetGateway'
+                  - 'ec2:DescribeInternetGateways'
+                  - 'ec2:DetachInternetGateway'
+                Resource: "*"

@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Cross bus event stack"
+    
+Resources:
+  MyEventBus: 
+    Type: AWS::Events::EventBus
+    Properties: 
+        Name: "TempDemoBus"
+
+  EventRule:
+    Type: AWS::Events::Rule
+    Properties: 
+      EventBusName: "TempDemoBus"
+      Description: 'Route to main bus'
+      EventPattern: 
+        source: 
+          - "aws.ec2"
+        detail-type: 
+          - "AWS API Call via CloudTrail"
+        detail: 
+          eventSource: 
+            - "ec2.amazonaws.com"
+          eventName: 
+            - "RunInstances"
+      State: "ENABLED"
+      Targets: 
+        - Arn: "arn:aws:events:us-east-1:366460988645:event-bus/InfracostCustomEventBus"
+          Id: "InfraCustomEB"
+          RoleArn: !GetAtt SourceEventBusRole.Arn
+
+  SourceEventBusRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: 'SourceBusRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: 
+              - events.amazonaws.com
+          Action: 
+            - sts:AssumeRole
+      Policies:
+      - PolicyName: AssumeCrossRole
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Resource: arn:aws:iam::366460988645:role/DestinationBusRole
+          

@@ -1,0 +1,49 @@
+SQSKey:
+  Type: 'AWS::KMS::Key'
+  Properties:
+    Description: A symmetric encryption KMS key
+    EnableKeyRotation: true
+    PendingWindowInDays: 20
+    KeyPolicy:
+      Version: 2012-10-17
+      Id: sqs-ch3-key
+      Statement:
+        - Sid: Enable IAM User Permissions
+          Effect: Allow
+          Principal:
+            AWS: 'arn:aws:iam:${AWS::Region}:${AWS::AccountId}:user/cloud_user'
+          Action: 'kms:*'
+          Resource: '*'
+        - Sid: Allow administration of the key
+          Effect: Allow
+          Principal:
+            AWS: 'arn:aws:iam:${AWS::Region}:${AWS::AccountId}:user/cloud_user'
+          Action:
+            - 'kms:Create*'
+            - 'kms:Describe*'
+            - 'kms:Enable*'
+            - 'kms:List*'
+            - 'kms:Put*'
+            - 'kms:Update*'
+            - 'kms:Revoke*'
+            - 'kms:Disable*'
+            - 'kms:Get*'
+            - 'kms:Delete*'
+            - 'kms:ScheduleKeyDeletion'
+            - 'kms:CancelKeyDeletion'
+          Resource: !Sub "*"
+        - Sid: Allow use of the key
+          Effect: Allow
+          Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+          Action:
+            - 'kms:DescribeKey'
+            - 'kms:Encrypt'
+            - 'kms:Decrypt'  
+            - 'kms:ReEncrypt*'
+            - 'kms:GenerateDataKey'
+            - 'kms:GenerateDataKeyWithoutPlaintext'
+          Resource: '*'
