@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Deploy a Lambda custom resource for Cloudformation to retrieve a secret from param store"
+Description: "Deploy a Lambda custom resource for Cloudformation to list all S3 buckets in account"
 
 Parameters:
   ParamS3Bucket:
@@ -25,19 +25,6 @@ Resources:
             Action:
               - sts:AssumeRole
       Policies:
-        - PolicyName: DynamoDBPermissions
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - 'dynamodb:BatchGetItem'
-                  - 'dynamodb:GetItem'
-                  - 'dynamodb:Query'
-                  - 'dynamodb:BatchWriteItem'
-                  - 'dynamodb:PutItem'
-                  - 'dynamodb:UpdateItem'
-                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:*"
         - PolicyName: AllowLambdaToWriteLogs
           PolicyDocument:
             Version: '2012-10-17'
@@ -52,6 +39,14 @@ Resources:
                 Action:
                   - 'logs:CreateLogGroup'
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+        - PolicyName: AllowS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:ListAllMyBuckets'
+                Resource: "*"
         - PolicyName: KMSPolicyCrud
           PolicyDocument:
             Version: '2012-10-17'
@@ -63,7 +58,7 @@ Resources:
                 # WARNING
                 # Lock this Resource down when deploying in a real environment
                 Resource: '*'
-      RoleName: !Sub "Param-Store-Exercise-Role-${AWS::StackName}"
+      RoleName: !Sub "CodeAlong-Exercise-Role-${AWS::StackName}"
       Path:
         Fn::Sub: /
 
@@ -73,22 +68,19 @@ Resources:
       Code:
         S3Bucket: !Ref ParamS3Bucket
         S3Key: !Ref ParamS3Key
-      Description: 'Custom CloudFormation resource used to retrieve a secret from Parameter Store'
-      FunctionName: !Sub "Param-Store-Exercise-${AWS::StackName}"
+      Description: 'Custom CloudFormation resource used to list all S3 buckets'
+      FunctionName: !Sub "CodeAlong-Exercise-${AWS::StackName}"
       Handler: 'lambda_function.lambda_handler'
       MemorySize: 128
       Role:
         Fn::GetAtt: LambdaRole.Arn
       Runtime: python3.8
       Timeout: 60
-      Environment:
-        Variables:
-          ParameterName: Secret
-
+     
 Outputs:
   LambdaFunctionARN:
     Description: The ARN of the lambda function
     Value:
       !GetAtt LambdaFunction.Arn
     Export:
-      Name: 'Param-Store-Exercise'
+      Name: 'CodeAlong-Exercise'
