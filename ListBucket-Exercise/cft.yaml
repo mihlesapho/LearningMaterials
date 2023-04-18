@@ -39,25 +39,6 @@ Resources:
                 Action:
                   - 'logs:CreateLogGroup'
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
-        - PolicyName: AllowS3Access
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - 's3:ListAllMyBuckets'
-                Resource: "*"
-        - PolicyName: KMSPolicyCrud
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - kms:GetKeyPolicy
-                  - kms:PutKeyPolicy
-                # WARNING
-                # Lock this Resource down when deploying in a real environment
-                Resource: '*'
       RoleName: !Sub "CodeAlong-Exercise-Role-${AWS::StackName}"
       Path:
         Fn::Sub: /
