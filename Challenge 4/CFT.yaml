@@ -10,9 +10,9 @@ Parameters:
     Description: The S3 key for the lambda code zip file
     Type: String
 
-  QueueKMSKey:
-    Type: String
-    Description: KMS Key Id used to encrypt the event SQS queue
+  # QueueKMSKey:
+  #   Type: String
+  #   Description: KMS Key Id used to encrypt the event SQS queue
     
   InfracostAPIKey:
     Description: The API key used to access the Infracost API
@@ -21,7 +21,7 @@ Parameters:
   DefaultSNSendpoint:
     Description: The email address that recieves EC2 prices
     Type: String
-    Default: mihlesapho@gmail.com
+    Default: mihle.sapho@accenture.com
   
   lambdaFunctionName:
     Type: String
@@ -41,13 +41,13 @@ Resources:
           - Sid: Enable IAM User Permissions
             Effect: Allow
             Principal:
-              AWS: 'arn:aws:iam::125597810236:root'
+              AWS: 'arn:aws:iam::${AWS::AccountId}:root'
             Action: 'kms:*'
             Resource: '*'
           - Sid: Allow administration of the key
             Effect: Allow
             Principal:
-              AWS: 'arn:aws:iam::125597810236:user/cloud_user'
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:user/${UserName}'
             Action:
               - 'kms:Create*'
               - 'kms:Describe*'
@@ -65,7 +65,7 @@ Resources:
           - Sid: Allow use of the key
             Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:user/${UserName}'
             Action:
               - 'kms:DescribeKey'
               - 'kms:Encrypt'
@@ -74,6 +74,12 @@ Resources:
               - 'kms:GenerateDataKey'
               - 'kms:GenerateDataKeyWithoutPlaintext'
             Resource: '*'
+
+  SQSKeyAlias:
+    Type: 'AWS::KMS::Alias'
+    Properties:
+      AliasName: SQSKeyAlias
+      TargetKeyId: !Ref SQSKey
 
   eventQueue:
     Type: AWS::SQS::Queue
@@ -190,6 +196,23 @@ Resources:
                 Action:
                   - 'sns:Publish'
                 Resource: !Sub "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*"
+        - PolicyName: KMSPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:GetKeyPolicy
+                  - kms:PutKeyPolicy
+                  - kms:DescribeKey
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:CreateGrant
+                  - kms:ReEncrypt
+                  - kms:GenerateDataKey
+                # WARNING
+                # Lock this Resource down when deploying in a real environment
+                Resource: '*'
       RoleName: !Sub "Infracost-Role-${AWS::StackName}"
       Path:
         Fn::Sub: /

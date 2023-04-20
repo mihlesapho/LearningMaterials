@@ -19,13 +19,69 @@ Parameters:
     Type: String
     Default: S
     Description: User Id Type
-
-  DynamoDBKMSKey:
+  
+  UserName:
     Type: String
-    Default: 8d22384a-cb8d-4d91-b5c9-a15088ecb58f
-    Description: KMS Key Id used to encrypt the dynamodb
+    Default: pluralsight-fee89c48
+    Description: Username of owner
+
+  # DynamoDBKMSKey:
+  #   Type: String
+  #   Default: 8d22384a-cb8d-4d91-b5c9-a15088ecb58f
+  #   Description: KMS Key Id used to encrypt the dynamodb
 
 Resources:
+  DynamoDBKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: An example symmetric encryption KMS key
+      EnableKeyRotation: true
+      PendingWindowInDays: 20
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: dynamobd-kms-key
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal: 
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow administration of the key
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:user/${UserName}'
+            Action:
+              - 'kms:Create*'
+              - 'kms:Describe*'
+              - 'kms:Enable*'
+              - 'kms:List*'
+              - 'kms:Put*'
+              - 'kms:Update*'
+              - 'kms:Revoke*'
+              - 'kms:Disable*'
+              - 'kms:Get*'
+              - 'kms:Delete*'
+              - 'kms:ScheduleKeyDeletion'
+              - 'kms:CancelKeyDeletion'
+            Resource: '*'
+          - Sid: Allow use of the key
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:user/${UserName}'
+            Action:
+              - 'kms:DescribeKey'
+              - 'kms:Encrypt'
+              - 'kms:Decrypt'
+              - 'kms:ReEncrypt*'
+            Resource: '*'
+
+  DynamoDBKMSKeyAlias:
+    Type: 'AWS::KMS::Alias'
+    Properties:
+      AliasName: alias/DynamoDBKMSKeyAlias
+      TargetKeyId: !Ref DynamoDBKMSKey
+
   UserTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -42,7 +98,7 @@ Resources:
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
       SSESpecification:
-        KMSMasterKeyId: !Ref DynamoDBKMSKey
+        KMSMasterKeyId: !GetAtt DynamoDBKMSKey.KeyId
         SSEEnabled: true
         SSEType: KMS  
 
@@ -95,6 +151,12 @@ Resources:
                 Action:
                   - kms:GetKeyPolicy
                   - kms:PutKeyPolicy
+                  - kms:DescribeKey
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:CreateGrant
+                  - kms:ReEncrypt
+                  - kms:GenerateDataKey
                 # WARNING
                 # Lock this Resource down when deploying in a real environment
                 Resource: '*'
