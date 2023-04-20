@@ -27,6 +27,11 @@ Parameters:
     Type: String
     Default: Infracost_API_Call
 
+  UserName:
+    Type: String
+    Default: pluralsight-fee89c48
+    Description: Username of owner
+
 Resources:
   SQSKey:
     Type: 'AWS::KMS::Key'
