@@ -17,6 +17,7 @@ Parameters:
   InfracostAPIKey:
     Description: The API key used to access the Infracost API
     Type: String
+    Default: '{"Infracost_Key" : "<YOUR_KEY_HERE>"}'
   
   DefaultSNSendpoint:
     Description: The email address that recieves EC2 prices

@@ -12,8 +12,9 @@ Parameters:
 
   InfracostAPIKey:
     Description: The API key used to access the Infracost API
-    Type: String
-
+    Type: String    
+    Default: '{"Infracost_Key" : "<YOUR_KEY_HERE>"}'
+  
   apiGatewayName:
     Type: String
     Default: Infracost_API
